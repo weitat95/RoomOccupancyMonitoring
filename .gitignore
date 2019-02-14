@@ -1,0 +1,7 @@
+mbed-os
+BUILD
+__pycache__
+CMakeLists.txt
+cmake-build-debug
+main.h.gch
+mbed-os.lib
