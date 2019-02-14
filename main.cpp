@@ -19,7 +19,9 @@
 #include "ButtonService.h"
 
 DigitalOut  led1(LED1);
+DigitalOut  led2(LED2);
 InterruptIn button(BUTTON1);
+InterruptIn pin_16(p16, PullDown);
 
 const static char     DEVICE_NAME[] = "Button";
 static const uint16_t uuid16_list[] = {ButtonService::BUTTON_SERVICE_UUID};
@@ -31,6 +33,8 @@ enum {
 };
 static uint8_t buttonState = IDLE;
 
+static uint8_t counter = 0;
+
 static ButtonService *buttonServicePtr;
 
 void buttonPressedCallback(void)
@@ -38,6 +42,8 @@ void buttonPressedCallback(void)
     /* Note that the buttonPressedCallback() executes in interrupt context, so it is safer to access
  *      * BLE device API from the main thread. */
     buttonState = PRESSED;
+	counter++;
+	led2 = !led2;
 }
 
 void buttonReleasedCallback(void)
@@ -45,6 +51,7 @@ void buttonReleasedCallback(void)
     /* Note that the buttonReleasedCallback() executes in interrupt context, so it is safer to access
  *      * BLE device API from the main thread. */
     buttonState = RELEASED;
+	led2 = !led2;
 }
 
 void disconnectionCallback(const Gap::DisconnectionCallbackParams_t *params)
@@ -104,23 +111,24 @@ int main(void)
     led1 = 1;
     Ticker ticker;
     ticker.attach(periodicCallback, 1);
-    button.fall(buttonPressedCallback);
-    button.rise(buttonReleasedCallback);
+//button.fall(buttonPressedCallback);
+//    button.rise(buttonReleasedCallback);
 
+    pin_16.rise(&buttonPressedCallback);
+    pin_16.fall(&buttonReleasedCallback);
     BLE &ble = BLE::Instance();
     ble.init(bleInitComplete);
-    
+
     /* SpinWait for initialization to complete. This is necessary because the
  *      * BLE object is used in the main loop below. */
     while (ble.hasInitialized()  == false) { /* spin loop */ }
-    
+
     while (true) {
         if (buttonState != IDLE) {
-            buttonServicePtr->updateButtonState(buttonState);
+            buttonServicePtr->updateButtonState(counter);
             buttonState = IDLE;
         }
 
         ble.waitForEvent();
     }
 }
-

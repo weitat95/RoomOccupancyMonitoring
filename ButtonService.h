@@ -22,7 +22,7 @@ public:
     const static uint16_t BUTTON_SERVICE_UUID              = 0xA000;
     const static uint16_t BUTTON_STATE_CHARACTERISTIC_UUID = 0xA001;
 
-    ButtonService(BLE &_ble, bool buttonPressedInitial) :
+    ButtonService(BLE &_ble, uint8_t buttonPressedInitial) :
         ble(_ble), buttonState(BUTTON_STATE_CHARACTERISTIC_UUID, &buttonPressedInitial, GattCharacteristic::BLE_GATT_CHAR_PROPERTIES_NOTIFY)
     {
         GattCharacteristic *charTable[] = {&buttonState};
@@ -30,14 +30,13 @@ public:
         ble.gattServer().addService(buttonService);
     }
 
-    void updateButtonState(bool newState) {
-        ble.gattServer().write(buttonState.getValueHandle(), (uint8_t *)&newState, sizeof(bool));
+    void updateButtonState(uint8_t counter) {
+        ble.gattServer().write(buttonState.getValueHandle(), (uint8_t *)&counter, sizeof(uint8_t));
     }
 
 private:
     BLE                              &ble;
-    ReadOnlyGattCharacteristic<bool>  buttonState;
+    ReadOnlyGattCharacteristic<uint8_t>  buttonState;
 };
 
 #endif /* #ifndef __BLE_BUTTON_SERVICE_H__ */
-
