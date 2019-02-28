@@ -17,14 +17,17 @@
 #include "mbed.h"
 #include "ble/BLE.h"
 #include "ButtonService.h"
+#include "tofSensor.h"
+#include "LinkedList.h"
 
 DigitalOut  led1(LED1);
 DigitalOut  led2(LED2);
 InterruptIn button(BUTTON1);
 InterruptIn pin_16(p16, PullDown);
-
+Serial pc(USBTX, USBRX, 115200);
 const static char     DEVICE_NAME[] = "Button";
 static const uint16_t uuid16_list[] = {ButtonService::BUTTON_SERVICE_UUID};
+#define MAX_DISTANCE 3000
 
 enum {
     RELEASED = 0,
@@ -37,6 +40,7 @@ static uint8_t counter = 0;
 
 static ButtonService *buttonServicePtr;
 
+static uint8_t READ_FLAG = 0;
 void buttonPressedCallback(void)
 {
     /* Note that the buttonPressedCallback() executes in interrupt context, so it is safer to access
@@ -62,6 +66,7 @@ void disconnectionCallback(const Gap::DisconnectionCallbackParams_t *params)
 void periodicCallback(void)
 {
     led1 = !led1; /* Do blinky on LED1 to indicate system aliveness. */
+    READ_FLAG = 1;
 }
 
 /**
@@ -106,8 +111,17 @@ void bleInitComplete(BLE::InitializationCompleteCallbackContext *params)
 
 }
 
+uint8_t take_filtered_measurement(void){
+    uint32_t raw = 0;
+    raw = take_measurement();
+    if(raw > MAX_DISTANCE){
+        raw = MAX_DISTANCE;
+    }
+}
+
 int main(void)
 {
+    init_sensor();
     led1 = 1;
     Ticker ticker;
     ticker.attach(periodicCallback, 1);
@@ -122,13 +136,22 @@ int main(void)
     /* SpinWait for initialization to complete. This is necessary because the
  *      * BLE object is used in the main loop below. */
     while (ble.hasInitialized()  == false) { /* spin loop */ }
-
+    uint32_t measurement;
     while (true) {
         if (buttonState != IDLE) {
             buttonServicePtr->updateButtonState(counter);
             buttonState = IDLE;
         }
+        if( READ_FLAG == 1){
+            READ_FLAG=0;
+            measurement = take_measurement();
+            if(measurement <= MAX_DISTANCE){
+                printf("%lu\n\r", measurement);
+                buttonServicePtr->updateButtonState(measurement/10); 
+            }
 
+        }
         ble.waitForEvent();
+
     }
 }

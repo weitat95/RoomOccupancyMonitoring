@@ -30,8 +30,8 @@ public:
         ble.gattServer().addService(buttonService);
     }
 
-    void updateButtonState(uint8_t counter) {
-        ble.gattServer().write(buttonState.getValueHandle(), (uint8_t *)&counter, sizeof(uint8_t));
+    void updateButtonState(uint8_t value) {
+        ble.gattServer().write(buttonState.getValueHandle(), (uint8_t *)&value, sizeof(uint8_t));
     }
 
 private:
