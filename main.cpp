@@ -18,22 +18,29 @@
 #include "ble/BLE.h"
 #include "ButtonService.h"
 #include "tofSensor.h"
-#include "LinkedList.h"
 
+#define MAX_DISTANCE 3000
+#define DOOR_THRESHOLD 150
+#define TIMESTAMP_ARRAY_SIZE 100
 DigitalOut  led1(LED1);
 DigitalOut  led2(LED2);
 InterruptIn button(BUTTON1);
 InterruptIn pin_16(p16, PullDown);
 Serial pc(USBTX, USBRX, 115200);
+
 const static char     DEVICE_NAME[] = "Button";
 static const uint16_t uuid16_list[] = {ButtonService::BUTTON_SERVICE_UUID};
-#define MAX_DISTANCE 3000
+bool isConnected = false;
+
+uint16_t array_timestamps[TIMESTAMP_ARRAY_SIZE];
+uint16_t timestamps_index = 0;
 
 enum {
     RELEASED = 0,
     PRESSED,
     IDLE
 };
+
 static uint8_t buttonState = IDLE;
 
 static uint8_t counter = 0;
@@ -46,8 +53,8 @@ void buttonPressedCallback(void)
     /* Note that the buttonPressedCallback() executes in interrupt context, so it is safer to access
  *      * BLE device API from the main thread. */
     buttonState = PRESSED;
-	counter++;
-	led2 = !led2;
+    counter++;
+    led2 = !led2;
 }
 
 void buttonReleasedCallback(void)
@@ -61,6 +68,12 @@ void buttonReleasedCallback(void)
 void disconnectionCallback(const Gap::DisconnectionCallbackParams_t *params)
 {
     BLE::Instance().gap().startAdvertising();
+    isConnected = false;
+}
+
+void connectionCallback(const Gap::ConnectionCallbackParams_t *params)
+{
+    isConnected = true;
 }
 
 void periodicCallback(void)
@@ -97,7 +110,7 @@ void bleInitComplete(BLE::InitializationCompleteCallbackContext *params)
     }
 
     ble.gap().onDisconnection(disconnectionCallback);
-
+    ble.gap().onConnection(connectionCallback);
     /* Setup primary service */
     buttonServicePtr = new ButtonService(ble, false /* initial value for button pressed */);
 
@@ -111,20 +124,31 @@ void bleInitComplete(BLE::InitializationCompleteCallbackContext *params)
 
 }
 
-uint8_t take_filtered_measurement(void){
-    uint32_t raw = 0;
-    raw = take_measurement();
-    if(raw > MAX_DISTANCE){
-        raw = MAX_DISTANCE;
+
+
+
+void appendCurrentTimeToList(void){
+    if ( isConnected ) {
+        printf("Sent 1 to phone");
+        buttonServicePtr -> updateButtonState( timestamps_index+1 );
+        timestamps_index = 0;
+    } else {    
+        uint16_t minutes = time(NULL)/60;   
+        printf("Minutes since start = %u\n\r", (unsigned int)minutes);  
+        array_timestamps[timestamps_index] = minutes;   
+        timestamps_index++; 
+        timestamps_index = timestamps_index % TIMESTAMP_ARRAY_SIZE;
     }
 }
 
 int main(void)
 {
+    bool wasPersonDetected = false;
     init_sensor();
+    set_time(0);
     led1 = 1;
     Ticker ticker;
-    ticker.attach(periodicCallback, 1);
+    ticker.attach(periodicCallback, 0.5);
 //button.fall(buttonPressedCallback);
 //    button.rise(buttonReleasedCallback);
 
@@ -138,16 +162,24 @@ int main(void)
     while (ble.hasInitialized()  == false) { /* spin loop */ }
     uint32_t measurement;
     while (true) {
-        if (buttonState != IDLE) {
-            buttonServicePtr->updateButtonState(counter);
-            buttonState = IDLE;
-        }
+        
         if( READ_FLAG == 1){
             READ_FLAG=0;
             measurement = take_measurement();
-            if(measurement <= MAX_DISTANCE){
-                printf("%lu\n\r", measurement);
-                buttonServicePtr->updateButtonState(measurement/10); 
+            printf("%lu\n\r", measurement);
+            if(measurement <= MAX_DISTANCE && measurement > DOOR_THRESHOLD) {
+                wasPersonDetected = true;
+                //if flag is set, detected someone
+                
+                //buttonServicePtr->updateButtonState(measurement/10); 
+
+            } else {
+                if(wasPersonDetected) {
+                    printf("PersonDetected\n\r!"); 
+                    appendCurrentTimeToList();
+                    wasPersonDetected = false;
+                }
+                //Set flag for door or no data
             }
 
         }

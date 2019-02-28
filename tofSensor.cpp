@@ -198,7 +198,7 @@ uint32_t take_measurement()
 
         if(Status == VL53L0X_ERROR_NONE) {
             Status = VL53L0X_GetRangingMeasurementData(pMyDevice, pRangingMeasurementData);
-
+            print_pal_error(Status);
             measurement = pRangingMeasurementData->RangeMilliMeter;
 //            printf("In loop measurement %lu: %d\n\r", measurement, pRangingMeasurementData->RangeMilliMeter);
             
