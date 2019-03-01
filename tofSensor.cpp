@@ -4,6 +4,11 @@
 #include "vl53l0x_platform.h"
 #include "vl53l0x_i2c_platform.h"
 
+#define RANGE1_ADDR 0x52
+#define RANGE2_ADDR 0x56
+#define range1_XSHUT p5
+#define range2_XSHUT p6
+
 void print_pal_error(VL53L0X_Error Status)
 {
     char buf[VL53L0X_MAX_STRING_LENGTH];
@@ -82,11 +87,32 @@ VL53L0X_Error WaitStopCompleted(VL53L0X_DEV Dev)
     return Status;
 }
 
-VL53L0X_Dev_t MyDevice;
-VL53L0X_Dev_t *pMyDevice = &MyDevice;
+void turn_on(uint8_t device_ind){
+    
+}
 
-void init_sensor()
+VL53L0X_Dev_t MyDevice1;
+VL53L0X_Dev_t MyDevice2;
+VL53L0X_Dev_t *pMyDevice;
+
+void select_device(uint8_t device_ind){
+    if (device_ind == 0){
+        pMyDevice = &MyDevice1;
+        pMyDevice -> I2cDevAddr = RANGE1_ADDR;
+    } else 
+        if(device_ind == 1){
+            pMyDevice = &MyDevice2;
+            pMyDevice -> I2cDevAddr = RANGE2_ADDR;
+        }
+    
+}
+
+
+
+void init_sensor(uint8_t device_ind)
 {
+    select_device(device_ind);
+
     VL53L0X_Error Status = VL53L0X_ERROR_NONE;
     VL53L0X_Version_t                   Version;
     VL53L0X_Version_t                  *pVersion   = &Version;
@@ -96,11 +122,9 @@ void init_sensor()
 
     printf("VL53L0X API Simple Ranging Example\r\n");
 
-    // Initialize Comms
-    pMyDevice->I2cDevAddr      = 0x52;
-    pMyDevice->comms_type      =  1;
-    pMyDevice->comms_speed_khz =  400;
-
+    pMyDevice -> comms_type = 1;
+    pMyDevice -> comms_speed_khz = 400;
+    
     printf("Init comms\r\n");
 
     if(Status == VL53L0X_ERROR_NONE) {
@@ -114,19 +138,23 @@ void init_sensor()
 
     addr = VL53L0X_scan();
     printf("Device found at: %i\r\n", addr);
+    
+    VL53L0X_SetDeviceAddress
+
+    
     //uint8_t data;
     //data=0;
     if(Status == VL53L0X_ERROR_NONE) {
         printf ("Call of VL53L0X_DataInit\r\n");
         uint16_t osc_calibrate_val=0;
-        Status = VL53L0X_RdWord(&MyDevice, VL53L0X_REG_OSC_CALIBRATE_VAL,&osc_calibrate_val);
+        Status = VL53L0X_RdWord(pMyDevice, VL53L0X_REG_OSC_CALIBRATE_VAL,&osc_calibrate_val);
         printf("%i\r\n",osc_calibrate_val);
-        Status = VL53L0X_DataInit(&MyDevice); // Data initialization
+        Status = VL53L0X_DataInit(pMyDevice); // Data initialization
         print_pal_error(Status);
     }
 
     if(Status == VL53L0X_ERROR_NONE) {
-        Status = VL53L0X_GetDeviceInfo(&MyDevice, &DeviceInfo);
+        Status = VL53L0X_GetDeviceInfo(pMyDevice, &DeviceInfo);
         if(Status == VL53L0X_ERROR_NONE) {
             printf("VL53L0X_GetDeviceInfo:\r\n");
             printf("Device Name : %s\r\n", DeviceInfo.Name);
@@ -179,8 +207,10 @@ void init_sensor()
     }
 }
 
-uint32_t take_measurement()
+uint32_t take_measurement(uint8_t device_ind)
 {
+    select_device(device_ind);
+
     VL53L0X_Error Status = VL53L0X_ERROR_NONE;
     VL53L0X_RangingMeasurementData_t    RangingMeasurementData;
     VL53L0X_RangingMeasurementData_t   *pRangingMeasurementData    = &RangingMeasurementData;

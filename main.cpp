@@ -144,28 +144,29 @@ void appendCurrentTimeToList(void){
 int main(void)
 {
     bool wasPersonDetected = false;
-    init_sensor();
-    set_time(0);
     led1 = 1;
+    uint32_t measurement;
+    
+    init_sensor(RANGE_SENSOR1);
+    
     Ticker ticker;
+    set_time(0);
     ticker.attach(periodicCallback, 0.5);
-//button.fall(buttonPressedCallback);
-//    button.rise(buttonReleasedCallback);
-
-    pin_16.rise(&buttonPressedCallback);
-    pin_16.fall(&buttonReleasedCallback);
+    
     BLE &ble = BLE::Instance();
     ble.init(bleInitComplete);
 
     /* SpinWait for initialization to complete. This is necessary because the
  *      * BLE object is used in the main loop below. */
     while (ble.hasInitialized()  == false) { /* spin loop */ }
-    uint32_t measurement;
+    
     while (true) {
         
         if( READ_FLAG == 1){
             READ_FLAG=0;
-            measurement = take_measurement();
+
+            measurement = take_measurement(RANGE_SENSOR1);
+
             printf("%lu\n\r", measurement);
             if(measurement <= MAX_DISTANCE && measurement > DOOR_THRESHOLD) {
                 wasPersonDetected = true;
