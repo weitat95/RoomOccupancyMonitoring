@@ -145,10 +145,10 @@ int main(void)
 {
     bool wasPersonDetected = false;
     led1 = 1;
-    uint32_t measurement;
+    uint32_t measurement, measurement2;
     
     init_sensor(RANGE_SENSOR1);
-    
+    init_sensor(RANGE_SENSOR2); 
     Ticker ticker;
     set_time(0);
     ticker.attach(periodicCallback, 0.5);
@@ -160,14 +160,24 @@ int main(void)
  *      * BLE object is used in the main loop below. */
     while (ble.hasInitialized()  == false) { /* spin loop */ }
     
+    uint32_t num_readings = 0;
+
     while (true) {
         
         if( READ_FLAG == 1){
             READ_FLAG=0;
-
-            measurement = take_measurement(RANGE_SENSOR1);
-
-            printf("%lu\n\r", measurement);
+                    
+            measurement2 = take_measurement(RANGE_SENSOR2);
+            measurement  = take_measurement(RANGE_SENSOR1);
+            if( num_readings %10 == 0){
+                printf("Nreads: %d, 1: %lu, 2:%lu\n\r",num_readings , measurement, measurement2);
+            }
+            if( measurement2 ==-1 || measurement ==-1){
+                printf("Number of Reads: %d\n\r", num_readings);
+                return 1;
+            }
+            num_readings++;
+            
             if(measurement <= MAX_DISTANCE && measurement > DOOR_THRESHOLD) {
                 wasPersonDetected = true;
                 //if flag is set, detected someone

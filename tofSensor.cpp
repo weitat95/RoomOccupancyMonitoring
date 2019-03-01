@@ -4,13 +4,18 @@
 #include "vl53l0x_platform.h"
 #include "vl53l0x_i2c_platform.h"
 
-#define RANGE1_ADDR 0x52
-#define RANGE2_ADDR 0x56
-#define range1_XSHUT p5
-#define range2_XSHUT p6
+#define RANGE_DEFAULT_ADDR 0x52
+#define RANGE1_ADDR 0x56
+#define RANGE2_ADDR 0x5A
+#define RANGE1_XSHUT p5
+#define RANGE2_XSHUT p6
+
+DigitalOut r1_XSHUT(RANGE1_XSHUT);
+DigitalOut r2_XSHUT(RANGE2_XSHUT);
 
 void print_pal_error(VL53L0X_Error Status)
-{
+{   
+    return;
     char buf[VL53L0X_MAX_STRING_LENGTH];
     VL53L0X_GetPalErrorString(Status, buf);
     printf("API Status: %i : %s\n\r", Status, buf);
@@ -70,7 +75,7 @@ VL53L0X_Error WaitStopCompleted(VL53L0X_DEV Dev)
     if (Status == VL53L0X_ERROR_NONE) {
         LoopNb = 0;
         do {
-            Status = VL53L0X_GetStopCompletedStatus(Dev, &StopCompleted);
+             Status = VL53L0X_GetStopCompletedStatus(Dev, &StopCompleted);
             if ((StopCompleted == 0x00) || Status != VL53L0X_ERROR_NONE) {
                 break;
             }
@@ -88,7 +93,21 @@ VL53L0X_Error WaitStopCompleted(VL53L0X_DEV Dev)
 }
 
 void turn_on(uint8_t device_ind){
-    
+    if(device_ind == 0){
+        r1_XSHUT.write(1);
+    }else if(device_ind==1){
+        r2_XSHUT.write(1);
+    }
+    wait_ms(10);
+}
+
+void turn_off(uint8_t device_ind){
+    if(device_ind ==0){
+        r1_XSHUT.write(0);
+    }else if(device_ind==1){
+        r2_XSHUT.write(0);
+    }
+    wait_ms(10);
 }
 
 VL53L0X_Dev_t MyDevice1;
@@ -98,21 +117,35 @@ VL53L0X_Dev_t *pMyDevice;
 void select_device(uint8_t device_ind){
     if (device_ind == 0){
         pMyDevice = &MyDevice1;
-        pMyDevice -> I2cDevAddr = RANGE1_ADDR;
     } else 
-        if(device_ind == 1){
-            pMyDevice = &MyDevice2;
-            pMyDevice -> I2cDevAddr = RANGE2_ADDR;
-        }
+    if(device_ind == 1){
+        pMyDevice = &MyDevice2;
+    }
     
 }
 
+VL53L0X_Error set_new_addr(uint8_t device_ind){
+    uint8_t device_addr;
+    if (device_ind ==0){
+        device_addr = RANGE1_ADDR;
+    }
+    if (device_ind ==1){
+        device_addr = RANGE2_ADDR;
+    }
+    VL53L0X_Error Status;
+    Status = VL53L0X_SetDeviceAddress(pMyDevice, device_addr);
+    pMyDevice -> I2cDevAddr = device_addr;
 
+    return Status;
+}
 
 void init_sensor(uint8_t device_ind)
 {
-    select_device(device_ind);
+    turn_off(device_ind);
+    turn_on(device_ind);
 
+    select_device(device_ind);
+    
     VL53L0X_Error Status = VL53L0X_ERROR_NONE;
     VL53L0X_Version_t                   Version;
     VL53L0X_Version_t                  *pVersion   = &Version;
@@ -121,9 +154,11 @@ void init_sensor(uint8_t device_ind)
     int32_t status_int;
 
     printf("VL53L0X API Simple Ranging Example\r\n");
-
+    
+    
+    pMyDevice -> I2cDevAddr = RANGE_DEFAULT_ADDR;
     pMyDevice -> comms_type = 1;
-    pMyDevice -> comms_speed_khz = 400;
+    pMyDevice -> comms_speed_khz = 100;
     
     printf("Init comms\r\n");
 
@@ -139,11 +174,6 @@ void init_sensor(uint8_t device_ind)
     addr = VL53L0X_scan();
     printf("Device found at: %i\r\n", addr);
     
-    VL53L0X_SetDeviceAddress
-
-    
-    //uint8_t data;
-    //data=0;
     if(Status == VL53L0X_ERROR_NONE) {
         printf ("Call of VL53L0X_DataInit\r\n");
         uint16_t osc_calibrate_val=0;
@@ -172,6 +202,15 @@ void init_sensor(uint8_t device_ind)
         print_pal_error(Status);
     }
 
+    //TODO: Set New Address for Multiple Devices
+    Status = set_new_addr(device_ind);
+
+    if(Status == VL53L0X_ERROR_NONE){
+        printf("Set new Address %u\r\n");
+    }else{
+        print_pal_error(Status);
+    }
+    
     Status = VL53L0X_ERROR_NONE;
     uint32_t refSpadCount;
     uint8_t isApertureSpads;
@@ -225,7 +264,7 @@ uint32_t take_measurement(uint8_t device_ind)
     if(Status == VL53L0X_ERROR_NONE) {
 
         Status = WaitMeasurementDataReady(pMyDevice);
-
+        print_pal_error(Status);
         if(Status == VL53L0X_ERROR_NONE) {
             Status = VL53L0X_GetRangingMeasurementData(pMyDevice, pRangingMeasurementData);
             print_pal_error(Status);
