@@ -141,12 +141,68 @@ void appendCurrentTimeToList(void){
     }
 }
 
+time_t prevSensor1Time = 0;
+time_t prevSensor2Time = 0;
+bool detectedSensor1 = false;
+bool detectedSensor2 = false;
+
+
+#define EXIT_ROOM -1
+#define NONE_SENSE 0
+#define ENTER_ROOM 1
+
+#define DETECTED_THRESHOLD 5
+int8_t aggregateMeasurements(uint32_t measurement1, uint32_t measurement2){
+    
+    time_t currentTime = time(NULL);
+    int8_t status = NONE_SENSE;
+    // Logic for Sensor 1 detecting something
+    
+    if (measurement1 <= MAX_DISTANCE && measurement1 > DOOR_THRESHOLD) { 
+        
+        detectedSensor1 = true;
+
+    } else { 
+        
+        if (detectedSensor1) { 
+        
+            printf("Sensor 1 Detected! \n\r"); 
+            detectedSensor1 = false;
+            if(currentTime - prevSensor2Time < DETECTED_THRESHOLD){
+                status += ENTER_ROOM;
+                printf("Someone Entered Room? \n\r");
+            }
+            prevSensor1Time = currentTime;
+        } 
+    } 
+    // Logic for Sensor 2 detecting something
+    if (measurement2 <= MAX_DISTANCE && measurement2 > DOOR_THRESHOLD) {
+        
+        detectedSensor2 = true;
+    
+    } else {
+        if (detectedSensor2) {
+    
+            printf("Sensor 2 Detected! \n\r");
+            detectedSensor2 = false;
+    
+            if(currentTime - prevSensor1Time < DETECTED_THRESHOLD){
+                status += EXIT_ROOM;
+                printf("Someone Exited Room? \n\r");
+            }
+            prevSensor2Time = currentTime;
+        }
+    }
+
+    return status; // If someone entered and exited at the same time return NON_SENSE
+}
+
+
 int main(void)
 {
-    bool wasPersonDetected = false;
     led1 = 1;
     uint32_t measurement, measurement2;
-    
+    int8_t personPassingThrough = 0; 
     init_sensor(RANGE_SENSOR1);
     init_sensor(RANGE_SENSOR2); 
     Ticker ticker;
@@ -167,32 +223,23 @@ int main(void)
         if( READ_FLAG == 1){
             READ_FLAG=0;
                     
-            measurement2 = take_measurement(RANGE_SENSOR2);
             measurement  = take_measurement(RANGE_SENSOR1);
-            if( num_readings %10 == 0){
+            measurement2 = take_measurement(RANGE_SENSOR2);
+            //if( num_readings %10 == 0){
                 printf("Nreads: %d, 1: %lu, 2:%lu\n\r",num_readings , measurement, measurement2);
-            }
+            //}
             if( measurement2 ==-1 || measurement ==-1){
                 printf("Number of Reads: %d\n\r", num_readings);
                 return 1;
             }
             num_readings++;
             
-            if(measurement <= MAX_DISTANCE && measurement > DOOR_THRESHOLD) {
-                wasPersonDetected = true;
-                //if flag is set, detected someone
-                
-                //buttonServicePtr->updateButtonState(measurement/10); 
-
-            } else {
-                if(wasPersonDetected) {
-                    printf("PersonDetected\n\r!"); 
-                    appendCurrentTimeToList();
-                    wasPersonDetected = false;
-                }
-                //Set flag for door or no data
+            personPassingThrough = aggregateMeasurements(measurement, measurement2);
+            if( personPassingThrough == EXIT_ROOM ){
+                printf("Someone Exited Room\n\r");
+            }else if( personPassingThrough == ENTER_ROOM ){
+                printf("Someone Entered Room\n\r");
             }
-
         }
         ble.waitForEvent();
 
