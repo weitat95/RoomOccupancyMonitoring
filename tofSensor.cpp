@@ -1,5 +1,6 @@
 #include "mbed.h"
 
+#include "tofSensor.h"
 #include "vl53l0x_api.h"
 #include "vl53l0x_platform.h"
 #include "vl53l0x_i2c_platform.h"
@@ -139,11 +140,17 @@ VL53L0X_Error set_new_addr(uint8_t device_ind){
     return Status;
 }
 
+void reset_i2c_chn(){
+    turn_off(RANGE_SENSOR1);
+    turn_off(RANGE_SENSOR2);
+    reset_i2c();
+}
+
 void init_sensor(uint8_t device_ind)
 {
     turn_off(device_ind);
     turn_on(device_ind);
-
+    
     select_device(device_ind);
     
     VL53L0X_Error Status = VL53L0X_ERROR_NONE;

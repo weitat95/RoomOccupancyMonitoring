@@ -1,4 +1,4 @@
-/* mbed Microcontroller Library
+/* mbed MicroGcontroller Library
  *  * Copyright (c) 2006-2013 ARM Limited
  *   *
  *    * Licensed under the Apache License, Version 2.0 (the "License");
@@ -22,14 +22,20 @@
 #define MAX_DISTANCE 3000
 #define DOOR_THRESHOLD 150
 #define TIMESTAMP_ARRAY_SIZE 100
+#define I2C_RESETTIME 2000 //in milliseconds
+
+
 DigitalOut  led1(LED1);
 DigitalOut  led2(LED2);
 InterruptIn button(BUTTON1);
 InterruptIn pin_16(p16, PullDown);
 Serial pc(USBTX, USBRX, 115200);
 
+uint16_t customServiceUUID = 0xA000;
+uint16_t readCharUUID = 0xA005;
+
 const static char     DEVICE_NAME[] = "Button";
-static const uint16_t uuid16_list[] = {ButtonService::BUTTON_SERVICE_UUID};
+static const uint16_t uuid16_list[] = {customServiceUUID};
 bool isConnected = false;
 
 uint16_t array_timestamps[TIMESTAMP_ARRAY_SIZE];
@@ -44,6 +50,8 @@ enum {
 static uint8_t buttonState = IDLE;
 
 static uint8_t counter = 0;
+
+static uint16_t tof_triggered_counter = 512;
 
 static ButtonService *buttonServicePtr;
 
@@ -82,6 +90,25 @@ void periodicCallback(void)
     READ_FLAG = 1;
 }
 
+/*
+ * Set Up characteristics
+ *
+ * */
+static uint8_t readValue[2] = {0};
+ReadOnlyArrayGattCharacteristic<uint8_t, sizeof(readValue)> readChar(readCharUUID, readValue, GattCharacteristic::BLE_GATT_CHAR_PROPERTIES_NOTIFY);
+GattCharacteristic *characteristics[] = {&readChar};
+GattService customService(customServiceUUID, characteristics, sizeof(characteristics) / sizeof(GattCharacteristic *));
+
+void updateDataToCharacteristic(BLE &ble, uint16_t data){
+     
+    uint8_t data_[2];
+    printf("%u:%u",data,data>>8);
+    data_[0] = data>>8;
+    data_[1] = (data<<8)>>8;
+    
+    ble.gattServer().write(readChar.getValueHandle(), data_, sizeof(uint8_t)*2);
+}
+
 /**
  *  * This function is called when the ble initialization process has failled
  *   */
@@ -112,8 +139,8 @@ void bleInitComplete(BLE::InitializationCompleteCallbackContext *params)
     ble.gap().onDisconnection(disconnectionCallback);
     ble.gap().onConnection(connectionCallback);
     /* Setup primary service */
-    buttonServicePtr = new ButtonService(ble, false /* initial value for button pressed */);
-
+//    buttonServicePtr = new ButtonService(ble, false /* initial value for button pressed */);
+    ble.addService(customService);
     /* setup advertising */
     ble.gap().accumulateAdvertisingPayload(GapAdvertisingData::BREDR_NOT_SUPPORTED | GapAdvertisingData::LE_GENERAL_DISCOVERABLE);
     ble.gap().accumulateAdvertisingPayload(GapAdvertisingData::COMPLETE_LIST_16BIT_SERVICE_IDS, (uint8_t *)uuid16_list, sizeof(uuid16_list));
@@ -123,7 +150,6 @@ void bleInitComplete(BLE::InitializationCompleteCallbackContext *params)
     ble.gap().startAdvertising();
 
 }
-
 
 
 
@@ -225,19 +251,33 @@ int main(void)
                     
             measurement  = take_measurement(RANGE_SENSOR1);
             measurement2 = take_measurement(RANGE_SENSOR2);
+
+            
             //if( num_readings %10 == 0){
+
                 printf("Nreads: %d, 1: %lu, 2:%lu\n\r",num_readings , measurement, measurement2);
             //}
-            if( measurement2 ==-1 || measurement ==-1){
+            if( measurement2 ==-1 || measurement > 500000000 || measurement ==-1 || measurement2==500000000 || measurement==1 ||measurement2==1){
                 printf("Number of Reads: %d\n\r", num_readings);
-                return 1;
+                printf("Resetting Channel");
+                reset_i2c_chn();
+                wait_ms(I2C_RESETTIME);
+                init_sensor(RANGE_SENSOR1);
+                init_sensor(RANGE_SENSOR2);
+                wait_ms(I2C_RESETTIME);
+                continue; 
             }
             num_readings++;
             
             personPassingThrough = aggregateMeasurements(measurement, measurement2);
             if( personPassingThrough == EXIT_ROOM ){
+                //buttonServicePtr -> updateButtonState( ++timestamps_index );
+                updateDataToCharacteristic(ble, ++tof_triggered_counter);
+                
                 printf("Someone Exited Room\n\r");
             }else if( personPassingThrough == ENTER_ROOM ){
+                //buttonServicePtr -> updateButtonState( ++timestamps_index );
+                updateDataToCharacteristic(ble, ++tof_triggered_counter);
                 printf("Someone Entered Room\n\r");
             }
         }

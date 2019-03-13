@@ -12,3 +12,5 @@
 void init_sensor(uint8_t device_ind);
 
 uint32_t take_measurement(uint8_t device_ind);
+
+void reset_i2c_chn();
