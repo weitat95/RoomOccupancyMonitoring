@@ -32,6 +32,8 @@ InterruptIn pin_16(p16, PullDown);
 Serial pc(USBTX, USBRX, 115200);
 
 uint16_t customServiceUUID = 0xA000;
+uint16_t buttonCharUUID = 0xA001;
+uint16_t ledCharUUID = 0xA002;
 uint16_t readCharUUID = 0xA005;
 
 const static char     DEVICE_NAME[] = "Button";
@@ -94,9 +96,17 @@ void periodicCallback(void)
  * Set Up characteristics
  *
  * */
+// Tof Characteristics
 static uint8_t readValue[2] = {0};
-ReadOnlyArrayGattCharacteristic<uint8_t, sizeof(readValue)> readChar(readCharUUID, readValue, GattCharacteristic::BLE_GATT_CHAR_PROPERTIES_NOTIFY);
-GattCharacteristic *characteristics[] = {&readChar};
+ReadOnlyArrayGattCharacteristic<uint8_t, sizeof(readValue)> tofChar(readCharUUID, readValue, GattCharacteristic::BLE_GATT_CHAR_PROPERTIES_NOTIFY);
+//// Led Characteristics
+//static bool initValueForLEDChar=false;
+//WriteOnlyGattCharacteristic<bool> ledChar(ledCharUUID, &initValueForLEDChar);
+//// Button Characteristics
+//static bool initValueForButtonChar=true;
+//ReadOnlyGattCharacteristic<bool> buttonChar(buttonCharUUID, &initValueForButtonChar);
+
+GattCharacteristic *characteristics[] = {&tofChar};
 GattService customService(customServiceUUID, characteristics, sizeof(characteristics) / sizeof(GattCharacteristic *));
 
 void updateDataToCharacteristic(BLE &ble, uint16_t data){
@@ -106,7 +116,7 @@ void updateDataToCharacteristic(BLE &ble, uint16_t data){
     data_[0] = data>>8;
     data_[1] = (data<<8)>>8;
     
-    ble.gattServer().write(readChar.getValueHandle(), data_, sizeof(uint8_t)*2);
+    ble.gattServer().write(tofChar.getValueHandle(), data_, sizeof(uint8_t)*2);
 }
 
 /**
