@@ -19,10 +19,12 @@
 #include "ble/Gap.h"
 #include "tofSensor.h"
 
-#define TIMESTAMP_ARRAY_SIZE 512 
+
+#define TIMESTAMP_ARRAY_SIZE 1024 
 #define I2C_RESETTIME 50 //in milliseconds
 #define BYTESSENT 2
 
+#define TIMEDIVIDER 2 // Store time is Seconds/2
 
 #define EXIT_ROOM -1
 #define NONE_SENSE 0
@@ -52,7 +54,7 @@ uint16_t buttonCharUUID = 0xA001;
 uint16_t ledCharUUID = 0xA002;
 uint16_t readCharUUID = 0xA005;
 
-const static char     DEVICE_NAME[] = "STOPCONNECTING";
+const static char     DEVICE_NAME[] = "DONTCONNECT!";
 static const uint16_t uuid16_list[] = {customServiceUUID};
 bool isConnected = false;
 
@@ -193,9 +195,16 @@ void bleInitComplete(BLE::InitializationCompleteCallbackContext *params)
 
 }
 
-void appendCurrentTimeToList(void){
+void appendCurrentTimeToList(int status){
     uint16_t seconds = time(NULL);   
     printf("Seconds since start = %u\n\r", (unsigned int)seconds);  
+    seconds = seconds/TIMEDIVIDER;
+    if( status == ENTER_ROOM ){ 
+        seconds = seconds | 0x8000; // SET MSB to 1 for Entering room
+    }else if ( status == EXIT_ROOM ){
+        seconds = seconds & ~0x8000; // SET MSB to 0 for Exiting room
+    }
+
     array_timestamps[timestamps_index] = seconds;   
     timestamps_index++; 
     timestamps_index = timestamps_index % TIMESTAMP_ARRAY_SIZE;
@@ -284,10 +293,13 @@ int main(void)
     while (ble.hasInitialized()  == false) { /* spin loop */ }
     
     uint32_t num_readings = 0;
-
 //    for(int i=0;i<10;i++){
-//        appendCurrentTimeToList();        
-//        wait_ms(1000);
+//        wait_ms(2000);
+//        if(i%2==0){
+//            appendCurrentTimeToList(EXIT_ROOM);
+//        }else{
+//            appendCurrentTimeToList(ENTER_ROOM);
+//        }
 //    }
     while (true) {
         ble.processEvents();
@@ -318,13 +330,13 @@ int main(void)
                 led3 = !led3;
                 //buttonServicePtr -> updateButtonState( ++timestamps_index );
                 //updateDataToCharacteristic(ble, &++tof_triggered_counter);
-                appendCurrentTimeToList(); 
+                appendCurrentTimeToList(EXIT_ROOM); 
                 printf("Someone Exited Room\n\r");
             }else if( personPassingThrough == ENTER_ROOM ){
                 led3 = !led3;
                 //buttonServicePtr -> updateButtonState( ++timestamps_index );
                 //updateDataToCharacteristic(ble, &++tof_triggered_counter);
-                appendCurrentTimeToList();
+                appendCurrentTimeToList(ENTER_ROOM);
                 printf("Someone Entered Room\n\r");
             }
         }else if(isConnected){
