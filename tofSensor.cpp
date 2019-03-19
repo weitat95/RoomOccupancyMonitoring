@@ -300,5 +300,9 @@ uint32_t take_measurement(uint8_t device_ind)
         Status = VL53L0X_ClearInterruptMask(pMyDevice,
                                             VL53L0X_REG_SYSTEM_INTERRUPT_GPIO_NEW_SAMPLE_READY);
 
-    return measurement;
+    if(Status != VL53L0X_ERROR_NONE){
+        return -1;
+    }else{
+        return measurement;
+    }
 }

@@ -16,80 +16,94 @@
 
 #include "mbed.h"
 #include "ble/BLE.h"
-#include "ButtonService.h"
+#include "ble/Gap.h"
 #include "tofSensor.h"
 
-#define MAX_DISTANCE 3000
-#define DOOR_THRESHOLD 150
-#define TIMESTAMP_ARRAY_SIZE 100
-#define I2C_RESETTIME 2000 //in milliseconds
+#define TIMESTAMP_ARRAY_SIZE 512 
+#define I2C_RESETTIME 50 //in milliseconds
+#define BYTESSENT 2
 
+
+#define EXIT_ROOM -1
+#define NONE_SENSE 0
+#define ENTER_ROOM 1
+
+#define MAX_DISTANCE 700 // Maximum distance detection threshold
+
+#define DOOR_THRESHOLD 150 // minimum distance detection threshold
+
+#define DETECTED_THRESHOLD 1 // Time threshold between detection in seconds
+
+//#define IGNORE_PRINTF
+
+#ifdef IGNORE_PRINTF
+#define printf(fmt, ...) (0)
+#endif
 
 DigitalOut  led1(LED1);
 DigitalOut  led2(LED2);
-InterruptIn button(BUTTON1);
-InterruptIn pin_16(p16, PullDown);
-Serial pc(USBTX, USBRX, 115200);
-
+DigitalOut  led4(LED4);
+DigitalOut  led3(LED3);
+//Serial pc(USBTX, USBRX, 115200);
+InterruptIn btn1(p17, PullDown);
+RawSerial serial(USBTX, USBRX, 115200);
 uint16_t customServiceUUID = 0xA000;
 uint16_t buttonCharUUID = 0xA001;
 uint16_t ledCharUUID = 0xA002;
 uint16_t readCharUUID = 0xA005;
 
-const static char     DEVICE_NAME[] = "Button";
+const static char     DEVICE_NAME[] = "STOPCONNECTING";
 static const uint16_t uuid16_list[] = {customServiceUUID};
 bool isConnected = false;
 
 uint16_t array_timestamps[TIMESTAMP_ARRAY_SIZE];
+
 uint16_t timestamps_index = 0;
 
-enum {
-    RELEASED = 0,
-    PRESSED,
-    IDLE
-};
 
-static uint8_t buttonState = IDLE;
+Ticker ticker;
 
-static uint8_t counter = 0;
-
-static uint16_t tof_triggered_counter = 512;
-
-static ButtonService *buttonServicePtr;
+static uint16_t tof_triggered_counter = 513;
 
 static uint8_t READ_FLAG = 0;
-void buttonPressedCallback(void)
-{
-    /* Note that the buttonPressedCallback() executes in interrupt context, so it is safer to access
- *      * BLE device API from the main thread. */
-    buttonState = PRESSED;
-    counter++;
-    led2 = !led2;
+static uint8_t READY_TO_SENT = 0;
+
+void button1Callback(void){
+    printf("Button1 pressed");
+   BLE::Instance().gap().startAdvertising();
 }
 
-void buttonReleasedCallback(void)
+void periodicCallback(void)
+
 {
-    /* Note that the buttonReleasedCallback() executes in interrupt context, so it is safer to access
- *      * BLE device API from the main thread. */
-    buttonState = RELEASED;
-	led2 = !led2;
+    if(isConnected)
+    {
+        READ_FLAG=0;
+        led4 = !led4;
+        return;
+    }
+    led1 = !led1; /* Do blinky on LED1 to indicate system aliveness. */
+    READ_FLAG = 1;
 }
+
 
 void disconnectionCallback(const Gap::DisconnectionCallbackParams_t *params)
 {
+    led4 = 1 ;
+    isConnected=false;
+    printf("Disconnection Callback\n\r");
     BLE::Instance().gap().startAdvertising();
-    isConnected = false;
 }
 
 void connectionCallback(const Gap::ConnectionCallbackParams_t *params)
 {
+    printf("Conenction Callback\n\r");
     isConnected = true;
 }
-
-void periodicCallback(void)
+void timeoutCallback( Gap::TimeoutSource_t source)
 {
-    led1 = !led1; /* Do blinky on LED1 to indicate system aliveness. */
-    READ_FLAG = 1;
+    printf("TimeoutCallback \n\r");
+    BLE::Instance().gap().startAdvertising();
 }
 
 /*
@@ -97,26 +111,42 @@ void periodicCallback(void)
  *
  * */
 // Tof Characteristics
-static uint8_t readValue[2] = {0};
+static uint8_t readValue[BYTESSENT] = {0};
 ReadOnlyArrayGattCharacteristic<uint8_t, sizeof(readValue)> tofChar(readCharUUID, readValue, GattCharacteristic::BLE_GATT_CHAR_PROPERTIES_NOTIFY);
 //// Led Characteristics
-//static bool initValueForLEDChar=false;
-//WriteOnlyGattCharacteristic<bool> ledChar(ledCharUUID, &initValueForLEDChar);
+static bool initValueForLEDChar=false;
+WriteOnlyGattCharacteristic<bool> ledChar(ledCharUUID, &initValueForLEDChar);
 //// Button Characteristics
 //static bool initValueForButtonChar=true;
 //ReadOnlyGattCharacteristic<bool> buttonChar(buttonCharUUID, &initValueForButtonChar);
 
-GattCharacteristic *characteristics[] = {&tofChar};
+GattCharacteristic *characteristics[] = {&tofChar, &ledChar};
 GattService customService(customServiceUUID, characteristics, sizeof(characteristics) / sizeof(GattCharacteristic *));
 
-void updateDataToCharacteristic(BLE &ble, uint16_t data){
-     
-    uint8_t data_[2];
-    printf("%u:%u",data,data>>8);
-    data_[0] = data>>8;
-    data_[1] = (data<<8)>>8;
+void writeCharCallback(const GattWriteCallbackParams *params){
+    if(READY_TO_SENT==0){
+        READY_TO_SENT=1;
+    }else{
+        READY_TO_SENT=0;
+        BLE &ble = BLE::Instance();
+        ble.disconnect(Gap::REMOTE_USER_TERMINATED_CONNECTION);
+    }
+}
+
+
+void updateDataToCharacteristic (uint16_t data){
+    //uint16_t curr_seconds = time(NULL);    
+    uint8_t data_[BYTESSENT];
     
-    ble.gattServer().write(tofChar.getValueHandle(), data_, sizeof(uint8_t)*2);
+    data_[0] = (data)>>8;
+    data_[1] = ((data)<<8)>>8;
+//    data_[0] = *data>>24;
+//    data_[1] = (*data<<8)>>16;
+//    data_[2] = (*data<<16)>>8;
+//    data_[3] = (*data<<24)>>24;
+    printf("SENT%u, %u\n\r",data_[0],data_[1]);
+    BLE &ble = BLE::Instance();
+    ble.gattServer().write(tofChar.getValueHandle(), data_, sizeof(uint8_t)*BYTESSENT);
 }
 
 /**
@@ -148,6 +178,8 @@ void bleInitComplete(BLE::InitializationCompleteCallbackContext *params)
 
     ble.gap().onDisconnection(disconnectionCallback);
     ble.gap().onConnection(connectionCallback);
+    ble.gap().onTimeout(timeoutCallback);
+    ble.onDataWritten(writeCharCallback);
     /* Setup primary service */
 //    buttonServicePtr = new ButtonService(ble, false /* initial value for button pressed */);
     ble.addService(customService);
@@ -161,20 +193,12 @@ void bleInitComplete(BLE::InitializationCompleteCallbackContext *params)
 
 }
 
-
-
 void appendCurrentTimeToList(void){
-    if ( isConnected ) {
-        printf("Sent 1 to phone");
-        buttonServicePtr -> updateButtonState( timestamps_index+1 );
-        timestamps_index = 0;
-    } else {    
-        uint16_t minutes = time(NULL)/60;   
-        printf("Minutes since start = %u\n\r", (unsigned int)minutes);  
-        array_timestamps[timestamps_index] = minutes;   
-        timestamps_index++; 
-        timestamps_index = timestamps_index % TIMESTAMP_ARRAY_SIZE;
-    }
+    uint16_t seconds = time(NULL);   
+    printf("Seconds since start = %u\n\r", (unsigned int)seconds);  
+    array_timestamps[timestamps_index] = seconds;   
+    timestamps_index++; 
+    timestamps_index = timestamps_index % TIMESTAMP_ARRAY_SIZE;
 }
 
 time_t prevSensor1Time = 0;
@@ -183,11 +207,6 @@ bool detectedSensor1 = false;
 bool detectedSensor2 = false;
 
 
-#define EXIT_ROOM -1
-#define NONE_SENSE 0
-#define ENTER_ROOM 1
-
-#define DETECTED_THRESHOLD 5
 int8_t aggregateMeasurements(uint32_t measurement1, uint32_t measurement2){
     
     time_t currentTime = time(NULL);
@@ -195,36 +214,36 @@ int8_t aggregateMeasurements(uint32_t measurement1, uint32_t measurement2){
     // Logic for Sensor 1 detecting something
     
     if (measurement1 <= MAX_DISTANCE && measurement1 > DOOR_THRESHOLD) { 
-        
+        //printf("Sensor1 Triggered\n\r"); 
         detectedSensor1 = true;
 
     } else { 
         
         if (detectedSensor1) { 
         
-            printf("Sensor 1 Detected! \n\r"); 
+          //  printf("Sensor 1 Detected! \n\r"); 
             detectedSensor1 = false;
             if(currentTime - prevSensor2Time < DETECTED_THRESHOLD){
                 status += ENTER_ROOM;
-                printf("Someone Entered Room? \n\r");
+            //    printf("Someone Entered Room? \n\r");
             }
             prevSensor1Time = currentTime;
         } 
     } 
     // Logic for Sensor 2 detecting something
     if (measurement2 <= MAX_DISTANCE && measurement2 > DOOR_THRESHOLD) {
-        
+       // printf("Sensor2 triggered\n\r");
         detectedSensor2 = true;
     
     } else {
         if (detectedSensor2) {
     
-            printf("Sensor 2 Detected! \n\r");
+         //   printf("Sensor 2 Detected! \n\r");
             detectedSensor2 = false;
     
             if(currentTime - prevSensor1Time < DETECTED_THRESHOLD){
                 status += EXIT_ROOM;
-                printf("Someone Exited Room? \n\r");
+           //     printf("Someone Exited Room? \n\r");
             }
             prevSensor2Time = currentTime;
         }
@@ -233,18 +252,30 @@ int8_t aggregateMeasurements(uint32_t measurement1, uint32_t measurement2){
     return status; // If someone entered and exited at the same time return NON_SENSE
 }
 
+void reset_tof_i2c(void){
+
+    reset_i2c_chn();
+    wait_ms(I2C_RESETTIME);
+    init_sensor(RANGE_SENSOR1);
+    init_sensor(RANGE_SENSOR2);
+    wait_ms(I2C_RESETTIME);
+
+}
+
 
 int main(void)
 {
     led1 = 1;
+    led4 = 1;
+    led2 = 1;
+    led3 = 1;
     uint32_t measurement, measurement2;
     int8_t personPassingThrough = 0; 
     init_sensor(RANGE_SENSOR1);
     init_sensor(RANGE_SENSOR2); 
-    Ticker ticker;
     set_time(0);
-    ticker.attach(periodicCallback, 0.5);
-    
+    ticker.attach(periodicCallback, 0.1);
+    btn1.rise(button1Callback); 
     BLE &ble = BLE::Instance();
     ble.init(bleInitComplete);
 
@@ -254,8 +285,12 @@ int main(void)
     
     uint32_t num_readings = 0;
 
+//    for(int i=0;i<10;i++){
+//        appendCurrentTimeToList();        
+//        wait_ms(1000);
+//    }
     while (true) {
-        
+        ble.processEvents();
         if( READ_FLAG == 1){
             READ_FLAG=0;
                     
@@ -265,33 +300,50 @@ int main(void)
             
             //if( num_readings %10 == 0){
 
-                printf("Nreads: %d, 1: %lu, 2:%lu\n\r",num_readings , measurement, measurement2);
+//                printf("Nreads: %d, 1: %lu, 2:%lu\n\r",num_readings , measurement, measurement2);
             //}
-            if( measurement2 ==-1 || measurement > 500000000 || measurement ==-1 || measurement2==500000000 || measurement==1 ||measurement2==1){
+            if( measurement2 ==-1 ||  measurement ==-1){
+                led2 = 1;   
                 printf("Number of Reads: %d\n\r", num_readings);
                 printf("Resetting Channel");
-                reset_i2c_chn();
-                wait_ms(I2C_RESETTIME);
-                init_sensor(RANGE_SENSOR1);
-                init_sensor(RANGE_SENSOR2);
-                wait_ms(I2C_RESETTIME);
+                reset_tof_i2c();
+                READ_FLAG=0;
                 continue; 
             }
+            led2 = 0;
             num_readings++;
             
             personPassingThrough = aggregateMeasurements(measurement, measurement2);
             if( personPassingThrough == EXIT_ROOM ){
+                led3 = !led3;
                 //buttonServicePtr -> updateButtonState( ++timestamps_index );
-                updateDataToCharacteristic(ble, ++tof_triggered_counter);
-                
+                //updateDataToCharacteristic(ble, &++tof_triggered_counter);
+                appendCurrentTimeToList(); 
                 printf("Someone Exited Room\n\r");
             }else if( personPassingThrough == ENTER_ROOM ){
+                led3 = !led3;
                 //buttonServicePtr -> updateButtonState( ++timestamps_index );
-                updateDataToCharacteristic(ble, ++tof_triggered_counter);
+                //updateDataToCharacteristic(ble, &++tof_triggered_counter);
+                appendCurrentTimeToList();
                 printf("Someone Entered Room\n\r");
             }
+        }else if(isConnected){
+            led1 = 1;
+            if(READY_TO_SENT  && timestamps_index!=0){        
+                printf("Sending timestamps to phone\n\r");
+                uint16_t curr_secs = time(NULL);
+                printf("Current Time: %u\n\r", curr_secs);
+                updateDataToCharacteristic(curr_secs);
+                for(int i=0; i<timestamps_index; i++){
+                    printf("%d: %u (s)\n\r", i, array_timestamps[i]);
+                    updateDataToCharacteristic(array_timestamps[i]);
+                }
+                uint16_t endOfTx = 65535;
+                updateDataToCharacteristic(endOfTx);
+                timestamps_index=0;
+            }
+            //ble.disconnect(Gap::REMOTE_USER_TERMINATED_CONNECTION); // Remote user disconnection
         }
-        ble.waitForEvent();
-
     }
+        
 }
