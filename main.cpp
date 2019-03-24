@@ -20,7 +20,7 @@
 #include "tofSensor.h"
 
 
-#define TIMESTAMP_ARRAY_SIZE 1024 
+#define TIMESTAMP_ARRAY_SIZE 256 
 #define I2C_RESETTIME 50 //in milliseconds
 #define BYTESSENT 2
 
@@ -62,11 +62,13 @@ uint16_t array_timestamps[TIMESTAMP_ARRAY_SIZE];
 
 uint16_t timestamps_index = 0;
 
+uint16_t endOfTx = 65535;
 
 Ticker ticker;
 
 static uint16_t tof_triggered_counter = 513;
 
+void appendCurrentTimeToList(int status);
 static uint8_t READ_FLAG = 0;
 static uint8_t READY_TO_SENT = 0;
 
@@ -93,17 +95,22 @@ void disconnectionCallback(const Gap::DisconnectionCallbackParams_t *params)
 {
     led4 = 1 ;
     isConnected=false;
+    READY_TO_SENT=0;
     printf("Disconnection Callback\n\r");
     BLE::Instance().gap().startAdvertising();
+    //appendCurrentTimeToList(ENTER_ROOM);
 }
 
 void connectionCallback(const Gap::ConnectionCallbackParams_t *params)
 {
     printf("Conenction Callback\n\r");
     isConnected = true;
+    //updateDataToCharacteristic(endOfTx);
 }
 void timeoutCallback( Gap::TimeoutSource_t source)
 {
+    led4 = 1;
+    isConnected = false;
     printf("TimeoutCallback \n\r");
     BLE::Instance().gap().startAdvertising();
 }
@@ -126,9 +133,12 @@ GattCharacteristic *characteristics[] = {&tofChar, &ledChar};
 GattService customService(customServiceUUID, characteristics, sizeof(characteristics) / sizeof(GattCharacteristic *));
 
 void writeCharCallback(const GattWriteCallbackParams *params){
+
     if(READY_TO_SENT==0){
         READY_TO_SENT=1;
+    printf("wrote to led, ready to sen!");
     }else{
+        printf("wrote to led, finish sending! disconnecting bt");
         READY_TO_SENT=0;
         BLE &ble = BLE::Instance();
         ble.disconnect(Gap::REMOTE_USER_TERMINATED_CONNECTION);
@@ -338,23 +348,41 @@ int main(void)
                 //updateDataToCharacteristic(ble, &++tof_triggered_counter);
                 appendCurrentTimeToList(ENTER_ROOM);
                 printf("Someone Entered Room\n\r");
-            }
+          }
         }else if(isConnected){
+            uint16_t endOfTx = 65535;
             led1 = 1;
-            if(READY_TO_SENT  && timestamps_index!=0){        
-                printf("Sending timestamps to phone\n\r");
-                uint16_t curr_secs = time(NULL);
-                printf("Current Time: %u\n\r", curr_secs);
-                updateDataToCharacteristic(curr_secs);
-                for(int i=0; i<timestamps_index; i++){
-                    printf("%d: %u (s)\n\r", i, array_timestamps[i]);
-                    updateDataToCharacteristic(array_timestamps[i]);
+            
+            if(READY_TO_SENT){
+                if(timestamps_index!=0){        
+                    printf("Sending timestamps to phone\n\r");
+                    uint16_t curr_secs = time(NULL);
+                    printf("Current Time: %u\n\r", curr_secs);
+                    updateDataToCharacteristic(curr_secs);
+                    for(int i=0; i<timestamps_index; i++){
+                        printf("%d: %u (s)\n\r", i, array_timestamps[i]);
+                        updateDataToCharacteristic(array_timestamps[i]);
+                        if(i==timestamps_index-1){
+                            updateDataToCharacteristic(endOfTx);
+                        }
+                    }
+                    timestamps_index=0;
+//                    ble.disconnect(Gap::REMOTE_USER_TERMINATED_CONNECTION);
+                }else{
+                 //   READY_TO_SENT=false;
+                   updateDataToCharacteristic(endOfTx);
+                   isConnected = false; 
                 }
-                uint16_t endOfTx = 65535;
-                updateDataToCharacteristic(endOfTx);
-                timestamps_index=0;
+//                for(int i=0;i<3;i++){
+//                    wait_ms(1000);
+//                    if(i%2==0){
+//                        appendCurrentTimeToList(EXIT_ROOM);
+//                    }else{
+//                        appendCurrentTimeToList(ENTER_ROOM);
+//                    }
+//                }
+//
             }
-            //ble.disconnect(Gap::REMOTE_USER_TERMINATED_CONNECTION); // Remote user disconnection
         }
     }
         
