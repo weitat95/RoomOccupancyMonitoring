@@ -20,7 +20,7 @@
 #include "tofSensor.h"
 
 
-#define TIMESTAMP_ARRAY_SIZE 256 
+#define TIMESTAMP_ARRAY_SIZE 100 
 #define I2C_RESETTIME 50 //in milliseconds
 #define BYTESSENT 2
 
@@ -32,11 +32,11 @@
 
 #define MAX_DISTANCE 700 // Maximum distance detection threshold
 
-#define DOOR_THRESHOLD 150 // minimum distance detection threshold
+#define DOOR_THRESHOLD 10 // minimum distance detection threshold
 
 #define DETECTED_THRESHOLD 1 // Time threshold between detection in seconds
 
-//#define IGNORE_PRINTF
+#define IGNORE_PRINTF
 
 #ifdef IGNORE_PRINTF
 #define printf(fmt, ...) (0)
@@ -82,9 +82,9 @@ void periodicCallback(void)
 {
     if(isConnected)
     {
-        READ_FLAG=0;
+        //READ_FLAG=0;
         led4 = !led4;
-        return;
+        //return;
     }
     led1 = !led1; /* Do blinky on LED1 to indicate system aliveness. */
     READ_FLAG = 1;
@@ -136,12 +136,12 @@ void writeCharCallback(const GattWriteCallbackParams *params){
 
     if(READY_TO_SENT==0){
         READY_TO_SENT=1;
-    printf("wrote to led, ready to sen!");
+    printf("wrote to led, ready to sen!\n\r");
     }else{
-        printf("wrote to led, finish sending! disconnecting bt");
+        printf("wrote to led, finish sending!\n\r");
         READY_TO_SENT=0;
-        BLE &ble = BLE::Instance();
-        ble.disconnect(Gap::REMOTE_USER_TERMINATED_CONNECTION);
+        //BLE &ble = BLE::Instance();
+        //ble.disconnect(Gap::REMOTE_USER_TERMINATED_CONNECTION);
     }
 }
 
@@ -322,7 +322,7 @@ int main(void)
             
             //if( num_readings %10 == 0){
 
-//                printf("Nreads: %d, 1: %lu, 2:%lu\n\r",num_readings , measurement, measurement2);
+            //printf("Nreads: %d, 1: %lu, 2:%lu\n\r",num_readings , measurement, measurement2);
             //}
             if( measurement2 ==-1 ||  measurement ==-1){
                 led2 = 1;   
@@ -349,11 +349,12 @@ int main(void)
                 appendCurrentTimeToList(ENTER_ROOM);
                 printf("Someone Entered Room\n\r");
           }
-        }else if(isConnected){
+        }
+        if(isConnected){
             uint16_t endOfTx = 65535;
             led1 = 1;
-            
             if(READY_TO_SENT){
+        //        printf("ReadyToSend!");
                 if(timestamps_index!=0){        
                     printf("Sending timestamps to phone\n\r");
                     uint16_t curr_secs = time(NULL);
@@ -369,9 +370,11 @@ int main(void)
                     timestamps_index=0;
 //                    ble.disconnect(Gap::REMOTE_USER_TERMINATED_CONNECTION);
                 }else{
+                 //    updateDataToCharacteristic(endOfTx);
                  //   READY_TO_SENT=false;
-                   updateDataToCharacteristic(endOfTx);
-                   isConnected = false; 
+                 //updateDataToCharacteristic(endOfTx);
+                 //  ble.disconnect(Gap::REMOTE_USER_TERMINATED_CONNECTION);
+                 //  isConnected = false; 
                 }
 //                for(int i=0;i<3;i++){
 //                    wait_ms(1000);
